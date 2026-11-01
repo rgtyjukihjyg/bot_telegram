@@ -34,7 +34,18 @@ SEND_DELETED_MEDIA = True
 SAVE_TRIGGERS = {"ема"}
 
 # Создаем бота БЕЗ кастомной сессии на глобальном уровне
-bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+class IPv6Session(AiohttpSession):
+    """aiogram сам создаёт aiohttp-сессию; просто просим TCPConnector использовать IPv6."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._connector_init["family"] = socket.AF_INET6
+
+
+bot = Bot(
+    BOT_TOKEN,
+    session=IPv6Session(),
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)
 dp = Dispatcher()
 
 # ---------------- БАЗА ----------------
@@ -478,17 +489,13 @@ async def on_owner_reply_to_notice(m: Message):
         await m.reply("Telegram уже не отдаёт этот файл.")
 
 
-# --- ФИКС: Теперь event loop уже запущен, и мы создаем сессию внутри него ---
 async def main():
-    connector = aiohttp.TCPConnector(family=socket.AF_INET6)
-    http_session = aiohttp.ClientSession(connector=connector)
-    bot.session = AiohttpSession(client=http_session)
-
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-    
-    # Закрываем сессию при выключении
-    await bot.session.close()
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    finally:
+        await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
