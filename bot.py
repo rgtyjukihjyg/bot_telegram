@@ -6,11 +6,14 @@ import sqlite3
 import time
 from datetime import datetime, timezone
 from io import BytesIO
+import socket
+import aiohttp
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.types import (
     BufferedInputFile,
     BusinessConnection,
@@ -24,16 +27,20 @@ from aiogram.types import (
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8834602809:AAGv_Hkwm2JL1edtF4hH_mKhCUskc8HV42Y")
 OWNER_ID = int(os.environ.get("OWNER_ID", "7752398574"))
-MINIAPP_URL = os.environ.get("MINIAPP_URL", "https://mastiff-acuteness-gear.ngrok-free.dev/app")
+MINIAPP_URL = os.environ.get("MINIAPP_URL", "https://example.com/app")
 
-# Что бот шлёт тебе в ЛС автоматически:
-CAPTURE_ON_REPLY = True    # сохранять медиа, если ответить на него СЛОВОМ-ТРИГГЕРОМ
-SEND_DELETED_MEDIA = True # медиа, которое собеседник удалил (включи, если нужно)
-
-# Слова-триггеры (в нижнем регистре). Выбери своё редкое слово, которое не пишешь обычно.
+CAPTURE_ON_REPLY = True
+SEND_DELETED_MEDIA = True
 SAVE_TRIGGERS = {"ема"}
 
-bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# --- ФИКС ДЛЯ RELAXDEV (Принудительный IPv6 для Telegram) ---
+# Создаем коннектор, который заставляет aiohttp использовать IPv6
+connector = aiohttp.TCPConnector(family=socket.AF_INET6)
+# Создаем кастомную сессию для aiogram
+custom_session = AiohttpSession(client=aiohttp.ClientSession(connector=connector))
+
+# Передаем эту сессию в Bot
+bot = Bot(BOT_TOKEN, session=custom_session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 # ---------------- БАЗА ----------------
@@ -165,9 +172,7 @@ def estimate_reg_date(uid: int) -> str:
     return "неизвестно"
 
 
-# ---------------- СОХРАНЕНИЕ МЕДИА ПО КОМАНДЕ "+" ----------------
 async def capture_media_on_plus(target: Message):
-    """Вызывается, когда владелец ответил на сообщение собеседника (любым текстом)."""
     mtype, file_id = media_of(target)
     if mtype not in ("photo", "voice", "video_note", "video", "animation", "document"):
         return
@@ -210,10 +215,6 @@ async def on_message(m: Message):
     if sender and sender.id == owner:
         trigger = (m.text or "").strip()
 
-        # ЛЮБОЙ ответ владельца на медиа собеседника — сохранить это медиа.
-        # Сохраняется только то, на что ответили, поэтому обычные медиа не падают в ЛС.
-        # Ответ СЛОВОМ-ТРИГГЕРОМ на медиа собеседника — сохранить это медиа.
-        # Обычные ответы ничего не пересылают.
         replied = m.reply_to_message
         replied_is_media = bool(replied and media_of(replied)[0])
         if (CAPTURE_ON_REPLY and trigger.lower() in SAVE_TRIGGERS
@@ -486,7 +487,6 @@ async def on_owner_reply_to_notice(m: Message):
 async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-
 
 if __name__ == "__main__":
     asyncio.run(main())
