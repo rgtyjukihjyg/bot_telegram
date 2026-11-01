@@ -34,16 +34,21 @@ SEND_DELETED_MEDIA = True
 SAVE_TRIGGERS = {"ема"}
 
 # Создаем бота БЕЗ кастомной сессии на глобальном уровне
-class IPv6Session(AiohttpSession):
-    """aiogram сам создаёт aiohttp-сессию; просто просим TCPConnector использовать IPv6."""
+# IP_FAMILY: auto (по умолчанию) | ipv4 | ipv6
+_FAMILIES = {"auto": socket.AF_UNSPEC, "ipv4": socket.AF_INET, "ipv6": socket.AF_INET6}
+IP_FAMILY = _FAMILIES.get(os.getenv("IP_FAMILY", "auto").lower(), socket.AF_UNSPEC)
+
+
+class FamilySession(AiohttpSession):
+    """aiogram сам создаёт aiohttp-сессию; просто задаём семейство IP для TCPConnector."""
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._connector_init["family"] = socket.AF_INET6
+        self._connector_init["family"] = IP_FAMILY
 
 
 bot = Bot(
     BOT_TOKEN,
-    session=IPv6Session(),
+    session=FamilySession(),
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 dp = Dispatcher()
