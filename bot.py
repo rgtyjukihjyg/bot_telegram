@@ -33,14 +33,8 @@ CAPTURE_ON_REPLY = True
 SEND_DELETED_MEDIA = True
 SAVE_TRIGGERS = {"ема"}
 
-# --- ФИКС ДЛЯ RELAXDEV (Принудительный IPv6 для Telegram) ---
-# Создаем коннектор, который заставляет aiohttp использовать IPv6
-connector = aiohttp.TCPConnector(family=socket.AF_INET6)
-# Создаем кастомную сессию для aiogram
-custom_session = AiohttpSession(client=aiohttp.ClientSession(connector=connector))
-
-# Передаем эту сессию в Bot
-bot = Bot(BOT_TOKEN, session=custom_session, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# Создаем бота БЕЗ кастомной сессии на глобальном уровне
+bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
 # ---------------- БАЗА ----------------
@@ -484,9 +478,17 @@ async def on_owner_reply_to_notice(m: Message):
         await m.reply("Telegram уже не отдаёт этот файл.")
 
 
+# --- ФИКС: Теперь event loop уже запущен, и мы создаем сессию внутри него ---
 async def main():
+    connector = aiohttp.TCPConnector(family=socket.AF_INET6)
+    http_session = aiohttp.ClientSession(connector=connector)
+    bot.session = AiohttpSession(client=http_session)
+
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    
+    # Закрываем сессию при выключении
+    await bot.session.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
